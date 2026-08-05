@@ -100,35 +100,6 @@ def export_interactive_html(nodes_data, edges_data, output_file="minecraft_map.h
         }}
 
         /* OVERRIDE VIS.JS DEFAULT TABLE CONTROL STYLES (Fixes white-on-white & horizontal scroll) */
-        #config-panel table {{
-            width: 100% !important;
-            border-collapse: collapse !important;
-        }}
-        #config-panel tr {{
-            display: flex !important;
-            flex-direction: column !important;
-            margin-bottom: 12px !important;
-            background-color: #252525 !important;
-            padding: 10px !important;
-            border-radius: 6px !important;
-            border: 1px solid #333 !important;
-        }}
-        #config-panel td {{
-            display: block !important;
-            width: 100% !important;
-            padding: 2px 0 !important;
-            color: #e0e0e0 !important;
-            font-size: 0.85rem !important;
-        }}
-        #config-panel input[type="range"] {{
-            width: 100% !important;
-            accent-color: #007acc;
-            margin-top: 6px;
-        }}
-        #config-panel input[type="checkbox"] {{
-            accent-color: #007acc;
-            transform: scale(1.2);
-        }}
         .vis-configuration-wrapper {{
             color: #e0e0e0 !important;
         }}
@@ -144,6 +115,44 @@ def export_interactive_html(nodes_data, edges_data, output_file="minecraft_map.h
             color: #00d2ff !important;
             font-weight: bold !important;
         }}
+        .vis-configuration-wrapper, 
+        .vis-configuration-wrapper div,
+        .vis-configuration-wrapper .vis-config-header {{
+            background-color: transparent !important;
+            color: #e0e0e0 !important;
+            border-color: #444 !important;
+        }}
+        .vis-configuration-wrapper .vis-config-item {{
+            background-color: #252525 !important;
+            border: 1px solid #333 !important;
+            border-radius: 4px !important;
+            margin-bottom: 6px !important;
+            padding: 8px !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }}
+        .vis-configuration-wrapper input[type="range"] {{
+            width: 100% !important;
+            accent-color: #007acc;
+            margin-top: 8px;
+        }}
+        .vis-configuration-wrapper input[type="text"],
+        .vis-configuration-wrapper input[type="number"],
+        .vis-configuration-wrapper .vis-config-rangeinput {{
+            background-color: #1a1a1a !important;
+            color: #00d2ff !important;
+            border: 1px solid #555 !important;
+            border-radius: 4px !important;
+            padding: 4px !important;
+            font-weight: bold !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }}
+        .vis-configuration-wrapper input:focus {{
+            outline: none;
+            border-color: #007acc !important;
+        }}
+        .vis-config-label {{ margin-bottom: 4px; }}
     </style>
 </head>
 <body>
