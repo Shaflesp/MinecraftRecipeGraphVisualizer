@@ -29,9 +29,15 @@ def extract_item(ingredient):
 def parse_recipes_from_jar(jar_path):
     """Reads crafting recipes directly from the .jar archive in memory."""
     edges = []
+    import json
+    import zipfile
+
     with zipfile.ZipFile(jar_path, 'r') as jar:
         for file in jar.namelist():
-            if file.startswith('data/minecraft/recipes/') and file.endswith('.json'):
+            # Mojang renamed 'recipes/' to 'recipe/' in 1.21. We check for both!
+            if (file.startswith('data/minecraft/recipes/') or
+                file.startswith('data/minecraft/recipe/')) and file.endswith('.json'):
+
                 try:
                     data = json.loads(jar.read(file).decode('utf-8'))
 
