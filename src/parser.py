@@ -3,7 +3,6 @@ import json
 
 
 def extract_item(ingredient):
-    """Parses ingredient objects across different Minecraft version formats."""
     if isinstance(ingredient, str):
         return ingredient.replace('minecraft:', '')
     if isinstance(ingredient, list):
@@ -26,10 +25,8 @@ def extract_item(ingredient):
 
 
 def parse_recipes(recipes_dir):
-    """Parses standard crafting recipes into input/output edge pairs."""
     edges = []
     if not os.path.exists(recipes_dir):
-        print(f"Error: Recipes directory '{recipes_dir}' not found.")
         return edges
 
     for filename in os.listdir(recipes_dir):
@@ -73,26 +70,41 @@ def parse_recipes(recipes_dir):
             for ing in set(ingredients_list):
                 if ing:
                     edges.append((ing, result_item))
-
         except Exception:
             pass
-
     return edges
 
 
 def parse_tags(tags_dir):
-    """Parses tag JSON files to bridge items to generic #tags."""
     tag_edges = []
     if not os.path.exists(tags_dir):
         return tag_edges
 
-    for root, _, files in os.walk(tags_dir):
+    # STRICT FILTER: Only parse item tags to prevent graph pollution (#game_events, etc.)
+    item_tags_dir = None
+    if os.path.basename(tags_dir) in ['item', 'items']:
+        item_tags_dir = tags_dir
+    else:
+        for subdir in ['items', 'item']:
+            potential_path = os.path.join(tags_dir, subdir)
+            if os.path.exists(potential_path):
+                item_tags_dir = potential_path
+                break
+
+    if not item_tags_dir:
+        print(f"Warning: Could not find 'item' or 'items' folder in {tags_dir}. Skipping tags.")
+        return tag_edges
+
+    for root, _, files in os.walk(item_tags_dir):
         for filename in files:
             if not filename.endswith('.json'):
                 continue
             filepath = os.path.join(root, filename)
-            rel_path = os.path.relpath(filepath, tags_dir)
+
+            # Create tag names relative to the item directory so they match recipe strings
+            rel_path = os.path.relpath(filepath, item_tags_dir)
             tag_name = '#' + rel_path.replace('\\', '/').replace('.json', '')
+
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
                     data = json.load(f)
