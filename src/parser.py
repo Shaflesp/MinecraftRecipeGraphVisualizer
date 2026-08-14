@@ -1,7 +1,8 @@
 import json
 import os
 import zipfile
-
+import io
+from PIL import Image
 
 def extract_item(ingredient):
     """Parses ingredient objects across different Minecraft version formats."""
@@ -113,7 +114,7 @@ def parse_tags_from_jar(jar_path):
 
 
 def extract_textures_from_jar(jar_path, output_dir="icons"):
-    """Extracts block and item textures to a local folder for HTML rendering."""
+    """Extracts textures to a local folder and crops animated sprite sheets."""
     print(f"Extracting textures from {os.path.basename(jar_path)}...")
     os.makedirs(output_dir, exist_ok=True)
 
@@ -123,8 +124,23 @@ def extract_textures_from_jar(jar_path, output_dir="icons"):
             if file.startswith('assets/minecraft/textures/item/') or \
                     file.startswith('assets/minecraft/textures/block/'):
                 if file.endswith('.png'):
-                    jar.extract(file, output_dir)
-                    extracted_count += 1
 
-    print(f"Extracted {extracted_count} textures to /{output_dir}/")
+                    img_data = jar.read(file)
+
+                    try:
+                        with Image.open(io.BytesIO(img_data)) as img:
+                            width, height = img.size
+
+                            if height > width:
+                                img = img.crop((0, 0, width, width))
+
+                            out_path = os.path.join(output_dir, file.replace('assets/minecraft/textures/', ''))
+                            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+                            img.save(out_path)
+                            extracted_count += 1
+                    except Exception as e:
+                        pass
+
+    print(f"Extracted and processed {extracted_count} textures to /{output_dir}/")
     return True

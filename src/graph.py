@@ -10,13 +10,64 @@ def build_graph(recipe_edges, tag_edges):
     return G
 
 
-def get_icon_path(node_id, icons_dir="icons/assets/minecraft/textures"):
-    """Locates the extracted image for a given block or item."""
-    item_path = f"{icons_dir}/item/{node_id}.png"
-    block_path = f"{icons_dir}/block/{node_id}.png"
+def get_icon_path(node_id, icons_dir="icons"):
+    """Locates the extracted image for a given block or item with intelligent fallbacks."""
+    search_id = node_id
 
-    if os.path.exists(item_path): return item_path
-    if os.path.exists(block_path): return block_path
+    # 1. Hardcoded explicit aliases
+    aliases = {
+        "mangrove_roots": "mangrove_roots_top",
+        "muddy_mangrove_roots": "muddy_mangrove_roots_top",
+        "crimson_hyphae": "crimson_stem",
+        "warped_hyphae": "warped_stem",
+        "stripped_crimson_hyphae": "stripped_crimson_stem",
+        "stripped_warped_hyphae": "stripped_warped_stem",
+        "snow_block": "snow"
+    }
+
+    if search_id in aliases:
+        search_id = aliases[search_id]
+
+    def check(name):
+        ipath = f"{icons_dir}/item/{name}.png"
+        bpath = f"{icons_dir}/block/{name}.png"
+        if os.path.exists(ipath): return ipath
+        if os.path.exists(bpath): return bpath
+        return None
+
+    # 2. Try the exact match first
+    found = check(search_id)
+    if found: return found
+
+    # 3. Smart Heuristic A: Try common block faces
+    # This automatically fixes Pumpkins, Targets, Hay Blocks, Azaleas, Crafting Tables, etc.
+    for suffix in ['_side', '_top', '_front']:
+        found = check(search_id + suffix)
+        if found: return found
+
+    # 4. Smart Heuristic B: Wood conversions
+    if search_id.endswith('_wood'):
+        found = check(search_id.replace('_wood', '_log'))
+        if found: return found
+
+    # 5. Smart Heuristic C: Architectural derivations (Walls, Fences, Slabs, Stairs)
+    # This strips the architectural suffix and hunts for the base material texture
+    for suffix in ['_wall', '_fence', '_fence_gate', '_slab', '_stairs']:
+        if search_id.endswith(suffix):
+            base = search_id.replace(suffix, '')
+
+            # Try direct base (e.g., cobblestone_wall -> cobblestone.png)
+            found = check(base)
+            if found: return found
+
+            # Try plural base (e.g., stone_brick_stairs -> stone_bricks.png)
+            found = check(base + 's')
+            if found: return found
+
+            # Try planks (e.g., oak_fence -> oak_planks.png)
+            found = check(base + '_planks')
+            if found: return found
+
     return None
 
 
