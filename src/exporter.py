@@ -53,18 +53,10 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
             transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         }}
 
-        #sidebar-left {{
-            left: 0; border-right: 1px solid var(--border-color);
-            box-shadow: 4px 0 25px rgba(0,0,0,0.8);
-            transform: translateX(0);
-        }}
+        #sidebar-left {{ left: 0; border-right: 1px solid var(--border-color); box-shadow: 4px 0 25px rgba(0,0,0,0.8); transform: translateX(0); }}
         #sidebar-left.collapsed {{ transform: translateX(-100%); }}
 
-        #sidebar-right {{
-            right: 0; border-left: 1px solid var(--border-color);
-            box-shadow: -4px 0 25px rgba(0,0,0,0.8);
-            transform: translateX(100%);
-        }}
+        #sidebar-right {{ right: 0; border-left: 1px solid var(--border-color); box-shadow: -4px 0 25px rgba(0,0,0,0.8); transform: translateX(100%); }}
         #sidebar-right.open {{ transform: translateX(0); }}
 
         .btn {{
@@ -136,10 +128,14 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         <div>
             <h2>Branch Isolation</h2>
             <div class="control-group" style="padding: 10px;">
-                <input type="text" id="search-input" list="item-list" placeholder="e.g. waxed_copper_lantern" autocomplete="off">
+                <input type="text" id="search-input" list="item-list" placeholder="e.g. oak_log" autocomplete="off">
+                <select id="isolation-mode" style="margin-top: 8px;">
+                    <option value="upstream">Show Prerequisites (Trace Backward)</option>
+                    <option value="downstream">Show What It Crafts (Trace Forward)</option>
+                </select>
                 <datalist id="item-list"></datalist>
                 <div class="flex-row">
-                    <button id="btn-isolate" class="btn">Isolate Crafting Tree</button>
+                    <button id="btn-isolate" class="btn">Isolate Tree</button>
                     <button id="btn-reset" class="btn">Reset View</button>
                 </div>
             </div>
@@ -182,14 +178,12 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
             <h1>Network Analytics</h1>
             <button id="close-btn-right" class="btn close-btn">✕</button>
         </div>
-
         <div>
             <h2>Global Topology</h2>
             <table class="data-table">
                 {build_rows(metrics_data['network_stats'])}
             </table>
         </div>
-
         <div>
             <h2>Highest Utility Nodes</h2>
             <table class="data-table">
@@ -197,7 +191,6 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
                 {build_rows(metrics_data['top_utility'])}
             </table>
         </div>
-
         <div>
             <h2>Material Ecosystem Reach</h2>
             <table class="data-table">
@@ -205,7 +198,6 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
                 {build_rows(metrics_data.get('self_sustaining', []))}
             </table>
         </div>
-
         <div>
             <h2>Crafting Complexity (Depth)</h2>
             <table class="data-table">
@@ -239,7 +231,6 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         var nodeSet = new vis.DataSet(rawNodes);
         var edgeSet = new vis.DataSet(rawEdges);
 
-        // Populate Datalist for Search Auto-complete
         var dataList = document.getElementById('item-list');
         rawNodes.forEach(n => {{
             var opt = document.createElement('option');
@@ -247,7 +238,6 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
             dataList.appendChild(opt);
         }});
 
-        // Populate Ecosystem Dropdown
         var groups = [...new Set(rawNodes.map(item => item.group))].sort((a, b) => a - b);
         var select = document.getElementById("clusterSelect");
         groups.forEach(groupId => {{
@@ -262,48 +252,55 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
 
         // FILTER LOGIC
         var nodeFilterValue = 'all';
-        var isolatedNodes = null; // Will hold a Set of nodes when isolating a branch
+        var isolatedNodes = null;
 
         var nodesView = new vis.DataView(nodeSet, {{
             filter: function (item) {{ 
-                // If we are isolating a branch, ONLY show nodes in that branch
                 if (isolatedNodes && !isolatedNodes.has(item.id)) return false;
-
-                // Otherwise apply cluster filtering
                 if (nodeFilterValue !== 'all' && item.group != nodeFilterValue) return false;
-
                 return true; 
             }}
         }});
 
         select.addEventListener('change', (e) => {{
             nodeFilterValue = e.target.value;
-            // If the user changes the cluster, clear the isolated branch view
             isolatedNodes = null; 
             document.getElementById('search-input').value = '';
             network.unselectAll();
             nodesView.refresh();
         }});
 
-        // ISOLATION LOGIC (Backwards Traversal)
-        function getCraftingAncestors(targetId) {{
-            let ancestors = new Set();
+        // ISOLATION LOGIC (Bi-directional Traversal)
+        function traverseTree(targetId, mode) {{
+            let visited = new Set();
             let queue = [targetId];
-            ancestors.add(targetId);
+            visited.add(targetId);
 
-            // Breadth-First Search going backwards up the crafting tree
             while(queue.length > 0) {{
                 let current = queue.shift();
-                let incomingEdges = rawEdges.filter(e => e.to === current);
 
-                incomingEdges.forEach(e => {{
-                    if(!ancestors.has(e.from)) {{
-                        ancestors.add(e.from);
-                        queue.push(e.from);
-                    }}
-                }});
+                let relevantEdges;
+                if (mode === 'upstream') {{
+                    // Backward: What does this item need? (Incoming edges)
+                    relevantEdges = rawEdges.filter(e => e.to === current);
+                    relevantEdges.forEach(e => {{
+                        if(!visited.has(e.from)) {{
+                            visited.add(e.from);
+                            queue.push(e.from);
+                        }}
+                    }});
+                }} else {{
+                    // Forward: What can this item craft? (Outgoing edges)
+                    relevantEdges = rawEdges.filter(e => e.from === current);
+                    relevantEdges.forEach(e => {{
+                        if(!visited.has(e.to)) {{
+                            visited.add(e.to);
+                            queue.push(e.to);
+                        }}
+                    }});
+                }}
             }}
-            return ancestors;
+            return visited;
         }}
 
         document.getElementById('btn-isolate').addEventListener('click', () => {{
@@ -313,17 +310,14 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
                 return;
             }}
 
-            // 1. Calculate the branch
-            isolatedNodes = getCraftingAncestors(val);
+            let mode = document.getElementById('isolation-mode').value;
 
-            // 2. Reset the Cluster filter to avoid conflicting views
+            isolatedNodes = traverseTree(val, mode);
+
             document.getElementById('clusterSelect').value = 'all';
             nodeFilterValue = 'all';
 
-            // 3. Update the map
             nodesView.refresh();
-
-            // 4. Highlight the target node and zoom in
             network.selectNodes([val]);
             network.fit({{ animation: true }});
         }});
@@ -386,4 +380,4 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
 
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(html_content)
-    print(f"✅ Interactive map with branch isolation exported successfully to: {output_file}")
+    print(f"✅ Interactive map with bi-directional branch isolation exported successfully to: {output_file}")
