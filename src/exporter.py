@@ -1,5 +1,6 @@
 import json
 
+
 def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_file="minecraft_map.html"):
     if not metrics_data:
         metrics_data = {
@@ -55,14 +56,14 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         #sidebar-left {{
             left: 0; border-right: 1px solid var(--border-color);
             box-shadow: 4px 0 25px rgba(0,0,0,0.8);
-            transform: translateX(0); /* Open by default */
+            transform: translateX(0);
         }}
         #sidebar-left.collapsed {{ transform: translateX(-100%); }}
 
         #sidebar-right {{
             right: 0; border-left: 1px solid var(--border-color);
             box-shadow: -4px 0 25px rgba(0,0,0,0.8);
-            transform: translateX(100%); /* Collapsed by default */
+            transform: translateX(100%);
         }}
         #sidebar-right.open {{ transform: translateX(0); }}
 
@@ -82,7 +83,7 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         .floating-btn.visible {{ opacity: 1; visibility: visible; z-index: 15; }}
 
         #open-btn-left {{ left: 20px; }}
-        #open-btn-right {{ right: 20px; }}
+        #open-btn-right {{ right: 20px; opacity: 1; visibility: visible; z-index: 15; }}
 
         .panel-header {{
             display: flex; justify-content: space-between; align-items: center;
@@ -103,21 +104,25 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         .data-table th {{ background: rgba(0,0,0,0.4); color: var(--accent); font-weight: 600; font-size: 0.85rem; }}
         .val-col {{ text-align: right !important; font-family: monospace; font-weight: bold; color: #fff; }}
 
-        select, input[type=range] {{
+        select, input[type=text], input[type=range] {{
             width: 100%; padding: 10px; background-color: var(--bg-input); color: #ffffff;
             border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; cursor: pointer;
         }}
+        input[type=text] {{ cursor: text; font-family: monospace; }}
+        input[type=text]:focus, select:focus {{ outline: none; border-color: var(--accent); }}
 
         .control-group {{ background: rgba(0,0,0,0.2); border: 1px solid #333; border-radius: 8px; padding: 12px; }}
         .slider-row {{ margin-bottom: 12px; }}
         .slider-row:last-child {{ margin-bottom: 0; }}
         .slider-label {{ display: flex; justify-content: space-between; font-size: 0.85rem; color: #bbb; margin-bottom: 6px; }}
         .slider-val {{ color: var(--accent); font-weight: bold; font-family: monospace; }}
+
+        .flex-row {{ display: flex; gap: 8px; margin-top: 8px; }}
+        .flex-row .btn {{ flex: 1; padding: 8px; font-size: 0.9rem; }}
     </style>
 </head>
 <body>
 
-    <!-- Floating Toggle Buttons -->
     <button id="open-btn-left" class="btn floating-btn">☰</button>
     <button id="open-btn-right" class="btn floating-btn visible">📊</button>
 
@@ -129,7 +134,19 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         </div>
 
         <div>
-            <h2>Data Filter</h2>
+            <h2>Branch Isolation</h2>
+            <div class="control-group" style="padding: 10px;">
+                <input type="text" id="search-input" list="item-list" placeholder="e.g. waxed_copper_lantern" autocomplete="off">
+                <datalist id="item-list"></datalist>
+                <div class="flex-row">
+                    <button id="btn-isolate" class="btn">Isolate Crafting Tree</button>
+                    <button id="btn-reset" class="btn">Reset View</button>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h2>Ecosystem Filter</h2>
             <select id="clusterSelect">
                 <option value="all">Show All Ecosystems</option>
             </select>
@@ -210,25 +227,10 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         const btnOpenRight = document.getElementById('open-btn-right');
         const btnCloseRight = document.getElementById('close-btn-right');
 
-        // Left Panel Events
-        btnCloseLeft.addEventListener('click', () => {{
-            panelLeft.classList.add('collapsed');
-            btnOpenLeft.classList.add('visible');
-        }});
-        btnOpenLeft.addEventListener('click', () => {{
-            panelLeft.classList.remove('collapsed');
-            btnOpenLeft.classList.remove('visible');
-        }});
-
-        // Right Panel Events
-        btnCloseRight.addEventListener('click', () => {{
-            panelRight.classList.remove('open');
-            btnOpenRight.classList.add('visible');
-        }});
-        btnOpenRight.addEventListener('click', () => {{
-            panelRight.classList.add('open');
-            btnOpenRight.classList.remove('visible');
-        }});
+        btnCloseLeft.addEventListener('click', () => {{ panelLeft.classList.add('collapsed'); btnOpenLeft.classList.add('visible'); }});
+        btnOpenLeft.addEventListener('click', () => {{ panelLeft.classList.remove('collapsed'); btnOpenLeft.classList.remove('visible'); }});
+        btnCloseRight.addEventListener('click', () => {{ panelRight.classList.remove('open'); btnOpenRight.classList.add('visible'); }});
+        btnOpenRight.addEventListener('click', () => {{ panelRight.classList.add('open'); btnOpenRight.classList.remove('visible'); }});
 
         // --- NETWORK DATA & INIT ---
         var rawNodes = {json.dumps(nodes_data)};
@@ -237,9 +239,17 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         var nodeSet = new vis.DataSet(rawNodes);
         var edgeSet = new vis.DataSet(rawEdges);
 
+        // Populate Datalist for Search Auto-complete
+        var dataList = document.getElementById('item-list');
+        rawNodes.forEach(n => {{
+            var opt = document.createElement('option');
+            opt.value = n.id;
+            dataList.appendChild(opt);
+        }});
+
+        // Populate Ecosystem Dropdown
         var groups = [...new Set(rawNodes.map(item => item.group))].sort((a, b) => a - b);
         var select = document.getElementById("clusterSelect");
-
         groups.forEach(groupId => {{
             var count = rawNodes.filter(n => n.group === groupId).length;
             if(count > 0) {{
@@ -250,14 +260,82 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
             }}
         }});
 
+        // FILTER LOGIC
         var nodeFilterValue = 'all';
+        var isolatedNodes = null; // Will hold a Set of nodes when isolating a branch
+
         var nodesView = new vis.DataView(nodeSet, {{
-            filter: function (item) {{ return nodeFilterValue === 'all' || item.group == nodeFilterValue; }}
+            filter: function (item) {{ 
+                // If we are isolating a branch, ONLY show nodes in that branch
+                if (isolatedNodes && !isolatedNodes.has(item.id)) return false;
+
+                // Otherwise apply cluster filtering
+                if (nodeFilterValue !== 'all' && item.group != nodeFilterValue) return false;
+
+                return true; 
+            }}
         }});
 
         select.addEventListener('change', (e) => {{
             nodeFilterValue = e.target.value;
+            // If the user changes the cluster, clear the isolated branch view
+            isolatedNodes = null; 
+            document.getElementById('search-input').value = '';
+            network.unselectAll();
             nodesView.refresh();
+        }});
+
+        // ISOLATION LOGIC (Backwards Traversal)
+        function getCraftingAncestors(targetId) {{
+            let ancestors = new Set();
+            let queue = [targetId];
+            ancestors.add(targetId);
+
+            // Breadth-First Search going backwards up the crafting tree
+            while(queue.length > 0) {{
+                let current = queue.shift();
+                let incomingEdges = rawEdges.filter(e => e.to === current);
+
+                incomingEdges.forEach(e => {{
+                    if(!ancestors.has(e.from)) {{
+                        ancestors.add(e.from);
+                        queue.push(e.from);
+                    }}
+                }});
+            }}
+            return ancestors;
+        }}
+
+        document.getElementById('btn-isolate').addEventListener('click', () => {{
+            let val = document.getElementById('search-input').value.trim();
+            if (!nodeSet.get(val)) {{
+                alert("Item not found in the crafting map!");
+                return;
+            }}
+
+            // 1. Calculate the branch
+            isolatedNodes = getCraftingAncestors(val);
+
+            // 2. Reset the Cluster filter to avoid conflicting views
+            document.getElementById('clusterSelect').value = 'all';
+            nodeFilterValue = 'all';
+
+            // 3. Update the map
+            nodesView.refresh();
+
+            // 4. Highlight the target node and zoom in
+            network.selectNodes([val]);
+            network.fit({{ animation: true }});
+        }});
+
+        document.getElementById('btn-reset').addEventListener('click', () => {{
+            isolatedNodes = null;
+            document.getElementById('search-input').value = '';
+            document.getElementById('clusterSelect').value = 'all';
+            nodeFilterValue = 'all';
+            nodesView.refresh();
+            network.unselectAll();
+            network.fit({{ animation: true }});
         }});
 
         var container = document.getElementById('mynetwork');
@@ -293,10 +371,7 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         const bindSlider = (inputId, valId) => {{
             const input = document.getElementById(inputId);
             const val = document.getElementById(valId);
-            input.addEventListener('input', (e) => {{
-                val.textContent = e.target.value;
-                updatePhysics();
-            }});
+            input.addEventListener('input', (e) => {{ val.textContent = e.target.value; updatePhysics(); }});
         }};
 
         bindSlider('in-gravity', 'val-gravity');
@@ -304,13 +379,11 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         bindSlider('in-damping', 'val-damping');
         bindSlider('in-central', 'val-central');
 
-        document.getElementById('btn-stabilize').addEventListener('click', () => {{
-            network.stabilize();
-        }});
+        document.getElementById('btn-stabilize').addEventListener('click', () => {{ network.stabilize(); }});
     </script>
 </body>
 </html>"""
 
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(html_content)
-    print(f"✅ Interactive map with analytics exported successfully to: {output_file}")
+    print(f"✅ Interactive map with branch isolation exported successfully to: {output_file}")
