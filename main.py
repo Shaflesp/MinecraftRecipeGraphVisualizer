@@ -1,7 +1,7 @@
 import argparse
 import os
 from src.parser import parse_recipes_from_jar, parse_tags_from_jar, extract_textures_from_jar
-from src.graph import build_graph, calculate_community_data
+from src.graph import build_graph, calculate_community_data, calculate_graph_metrics
 from src.exporter import export_interactive_html
 
 
@@ -42,8 +42,12 @@ def main():
     print("Calculating modularity clusters and applying visuals...")
     nodes_data, edges_data = calculate_community_data(G, use_icons=use_icons)
 
+    # 5. Calculating metrics
+    print("Crunching network metrics...")
+    metrics_data = calculate_graph_metrics(G)
+
     print("Exporting visual HTML report...")
-    export_interactive_html(nodes_data, edges_data, args.out)
+    export_interactive_html(nodes_data, edges_data, metrics_data=metrics_data, output_file=args.out)
 
 
 if __name__ == '__main__':

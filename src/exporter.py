@@ -1,7 +1,17 @@
 import json
 
+def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_file="minecraft_map.html"):
+    if not metrics_data:
+        metrics_data = {
+            "network_stats": [("Total Items", len(nodes_data)), ("Total Recipes", len(edges_data))],
+            "top_utility": [("No Data", "-")],
+            "self_sustaining": [("No Data", "-")],
+            "top_crafted": [("No Data", "-")]
+        }
 
-def export_interactive_html(nodes_data, edges_data, output_file="minecraft_map.html"):
+    def build_rows(data_list):
+        return "".join([f"<tr><td>{k}</td><td class='val-col'>{v}</td></tr>" for k, v in data_list])
+
     html_content = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -10,154 +20,112 @@ def export_interactive_html(nodes_data, edges_data, output_file="minecraft_map.h
     <style type="text/css">
         :root {{
             --bg-main: #121212;
-            --bg-sidebar: rgba(30, 30, 30, 0.95);
+            --bg-panel: rgba(30, 30, 30, 0.95);
             --bg-input: #2a2a2a;
             --accent: #007acc;
-            --accent-hover: #0098ff;
             --text-main: #e0e0e0;
             --border-color: #444444;
         }}
 
         body {{
-            margin: 0;
-            padding: 0;
-            background-color: var(--bg-main);
-            color: var(--text-main);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0;
+            background-color: var(--bg-main); color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             overflow: hidden;
         }}
 
-        /* Custom Dark Mode Scrollbar */
         ::-webkit-scrollbar {{ width: 8px; }}
         ::-webkit-scrollbar-track {{ background: transparent; }}
         ::-webkit-scrollbar-thumb {{ background: #555; border-radius: 4px; }}
         ::-webkit-scrollbar-thumb:hover {{ background: #777; }}
 
-        /* Main Network Canvas (Takes Full Screen) */
         #mynetwork {{
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 1;
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            width: 100vw; height: 100vh; z-index: 1;
         }}
 
-        /* Floating Sidebar Container */
-        #sidebar {{
-            position: absolute;
-            top: 0; left: 0; bottom: 0;
-            width: 360px;
-            background-color: var(--bg-sidebar);
-            backdrop-filter: blur(8px); /* Nice glass effect over the graph */
-            border-right: 1px solid var(--border-color);
-            padding: 25px 20px;
-            box-shadow: 4px 0 25px rgba(0,0,0,0.8);
-            display: flex;
-            flex-direction: column;
-            gap: 25px;
-            overflow-y: auto;
-            z-index: 10;
-            box-sizing: border-box;
-            transform: translateX(0);
+        .panel {{
+            position: absolute; top: 0; bottom: 0; width: 360px;
+            background-color: var(--bg-panel); backdrop-filter: blur(8px);
+            padding: 25px 20px; display: flex; flex-direction: column; gap: 25px;
+            overflow-y: auto; z-index: 10; box-sizing: border-box;
             transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         }}
 
-        /* The "Folded" State */
-        #sidebar.collapsed {{
-            transform: translateX(-100%);
+        #sidebar-left {{
+            left: 0; border-right: 1px solid var(--border-color);
+            box-shadow: 4px 0 25px rgba(0,0,0,0.8);
+            transform: translateX(0); /* Open by default */
         }}
+        #sidebar-left.collapsed {{ transform: translateX(-100%); }}
 
-        /* Toggle Buttons */
+        #sidebar-right {{
+            right: 0; border-left: 1px solid var(--border-color);
+            box-shadow: -4px 0 25px rgba(0,0,0,0.8);
+            transform: translateX(100%); /* Collapsed by default */
+        }}
+        #sidebar-right.open {{ transform: translateX(0); }}
+
         .btn {{
-            background-color: var(--bg-input);
-            color: var(--text-main);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            background-color: var(--bg-input); color: var(--text-main);
+            border: 1px solid var(--border-color); border-radius: 6px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
             transition: all 0.2s ease;
         }}
         .btn:hover {{ background-color: #3a3a3a; color: white; border-color: var(--accent); }}
 
-        #open-btn {{
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 45px;
-            height: 45px;
-            font-size: 1.5rem;
-            z-index: 5;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s ease, visibility 0.3s ease;
+        .floating-btn {{
+            position: absolute; top: 20px; width: 45px; height: 45px;
+            font-size: 1.5rem; z-index: 5; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease;
         }}
-        #open-btn.visible {{ opacity: 1; visibility: visible; z-index: 15; }}
+        .floating-btn.visible {{ opacity: 1; visibility: visible; z-index: 15; }}
 
-        .sidebar-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 5px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid var(--border-color);
+        #open-btn-left {{ left: 20px; }}
+        #open-btn-right {{ right: 20px; }}
+
+        .panel-header {{
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 5px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color);
         }}
-        .sidebar-header h1 {{ margin: 0; font-size: 1.3rem; font-weight: 600; color: white; }}
-        #close-btn {{ width: 32px; height: 32px; font-size: 1rem; }}
+        .panel-header h1 {{ margin: 0; font-size: 1.3rem; font-weight: 600; color: white; }}
+        .close-btn {{ width: 32px; height: 32px; font-size: 1rem; }}
 
         h2 {{ margin: 0 0 12px 0; font-size: 1rem; color: var(--accent); }}
 
-        select {{
-            width: 100%;
-            padding: 10px;
-            background-color: var(--bg-input);
-            color: #ffffff;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            box-sizing: border-box;
-        }}
-        select:focus {{ outline: none; border-color: var(--accent); }}
-
-        /* Custom Slider UI */
-        .control-group {{
-            background: rgba(0, 0, 0, 0.2);
+        .data-table {{
+            width: 100%; border-collapse: collapse; font-size: 0.9rem;
+            background: rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden;
             border: 1px solid #333;
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 10px;
         }}
-        .slider-row {{
-            margin-bottom: 12px;
+        .data-table th, .data-table td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid #333; }}
+        .data-table tr:last-child td {{ border-bottom: none; }}
+        .data-table th {{ background: rgba(0,0,0,0.4); color: var(--accent); font-weight: 600; font-size: 0.85rem; }}
+        .val-col {{ text-align: right !important; font-family: monospace; font-weight: bold; color: #fff; }}
+
+        select, input[type=range] {{
+            width: 100%; padding: 10px; background-color: var(--bg-input); color: #ffffff;
+            border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box; cursor: pointer;
         }}
+
+        .control-group {{ background: rgba(0,0,0,0.2); border: 1px solid #333; border-radius: 8px; padding: 12px; }}
+        .slider-row {{ margin-bottom: 12px; }}
         .slider-row:last-child {{ margin-bottom: 0; }}
-        .slider-label {{
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            color: #bbb;
-            margin-bottom: 6px;
-        }}
-        .slider-val {{ color: var(--accent); font-weight: bold; font-family: monospace; font-size: 0.95rem; }}
-        input[type=range] {{
-            width: 100%;
-            margin: 0;
-            accent-color: var(--accent);
-            cursor: pointer;
-        }}
+        .slider-label {{ display: flex; justify-content: space-between; font-size: 0.85rem; color: #bbb; margin-bottom: 6px; }}
+        .slider-val {{ color: var(--accent); font-weight: bold; font-family: monospace; }}
     </style>
 </head>
 <body>
 
-    <button id="open-btn" class="btn">☰</button>
+    <!-- Floating Toggle Buttons -->
+    <button id="open-btn-left" class="btn floating-btn">☰</button>
+    <button id="open-btn-right" class="btn floating-btn visible">📊</button>
 
-    <div id="sidebar">
-        <div class="sidebar-header">
+    <!-- LEFT PANEL: Controls -->
+    <div id="sidebar-left" class="panel">
+        <div class="panel-header">
             <h1>Map Controls</h1>
-            <button id="close-btn" class="btn">✕</button>
+            <button id="close-btn-left" class="btn close-btn">✕</button>
         </div>
 
         <div>
@@ -191,21 +159,75 @@ def export_interactive_html(nodes_data, edges_data, output_file="minecraft_map.h
         </div>
     </div>
 
+    <!-- RIGHT PANEL: Metrics -->
+    <div id="sidebar-right" class="panel">
+        <div class="panel-header">
+            <h1>Network Analytics</h1>
+            <button id="close-btn-right" class="btn close-btn">✕</button>
+        </div>
+
+        <div>
+            <h2>Global Topology</h2>
+            <table class="data-table">
+                {build_rows(metrics_data['network_stats'])}
+            </table>
+        </div>
+
+        <div>
+            <h2>Highest Utility Nodes</h2>
+            <table class="data-table">
+                <tr><th>Item Name</th><th class="val-col">Out-Degree</th></tr>
+                {build_rows(metrics_data['top_utility'])}
+            </table>
+        </div>
+
+        <div>
+            <h2>Material Ecosystem Reach</h2>
+            <table class="data-table">
+                <tr><th>Root Material</th><th class="val-col">Downstream Tree</th></tr>
+                {build_rows(metrics_data.get('self_sustaining', []))}
+            </table>
+        </div>
+
+        <div>
+            <h2>Crafting Complexity (Depth)</h2>
+            <table class="data-table">
+                <tr><th>Item Name</th><th class="val-col">Required Steps</th></tr>
+                {build_rows(metrics_data.get('top_crafted', []))}
+            </table>
+        </div>
+    </div>
+
     <div id="mynetwork"></div>
 
     <script type="text/javascript">
         // --- UI FOLDING LOGIC ---
-        const sidebar = document.getElementById('sidebar');
-        const openBtn = document.getElementById('open-btn');
-        const closeBtn = document.getElementById('close-btn');
+        const panelLeft = document.getElementById('sidebar-left');
+        const btnOpenLeft = document.getElementById('open-btn-left');
+        const btnCloseLeft = document.getElementById('close-btn-left');
 
-        closeBtn.addEventListener('click', () => {{
-            sidebar.classList.add('collapsed');
-            openBtn.classList.add('visible');
+        const panelRight = document.getElementById('sidebar-right');
+        const btnOpenRight = document.getElementById('open-btn-right');
+        const btnCloseRight = document.getElementById('close-btn-right');
+
+        // Left Panel Events
+        btnCloseLeft.addEventListener('click', () => {{
+            panelLeft.classList.add('collapsed');
+            btnOpenLeft.classList.add('visible');
         }});
-        openBtn.addEventListener('click', () => {{
-            sidebar.classList.remove('collapsed');
-            openBtn.classList.remove('visible');
+        btnOpenLeft.addEventListener('click', () => {{
+            panelLeft.classList.remove('collapsed');
+            btnOpenLeft.classList.remove('visible');
+        }});
+
+        // Right Panel Events
+        btnCloseRight.addEventListener('click', () => {{
+            panelRight.classList.remove('open');
+            btnOpenRight.classList.add('visible');
+        }});
+        btnOpenRight.addEventListener('click', () => {{
+            panelRight.classList.add('open');
+            btnOpenRight.classList.remove('visible');
         }});
 
         // --- NETWORK DATA & INIT ---
@@ -230,9 +252,7 @@ def export_interactive_html(nodes_data, edges_data, output_file="minecraft_map.h
 
         var nodeFilterValue = 'all';
         var nodesView = new vis.DataView(nodeSet, {{
-            filter: function (item) {{
-                return nodeFilterValue === 'all' || item.group == nodeFilterValue;
-            }}
+            filter: function (item) {{ return nodeFilterValue === 'all' || item.group == nodeFilterValue; }}
         }});
 
         select.addEventListener('change', (e) => {{
@@ -242,28 +262,18 @@ def export_interactive_html(nodes_data, edges_data, output_file="minecraft_map.h
 
         var container = document.getElementById('mynetwork');
         var data = {{ nodes: nodesView, edges: edgeSet }};
-
         var options = {{
-            nodes: {{
-                shape: 'dot',
-                font: {{ color: '#ffffff', size: 14 }},
-                borderWidth: 1,
-                borderWidthSelected: 3
-            }},
-            edges: {{
-                color: {{ inherit: 'from', opacity: 0.5 }},
-                smooth: {{ type: 'continuous' }}
-            }},
-            physics: {{
-                barnesHut: {{
-                    gravity: -6000,
-                    centralGravity: 0.4,
+            nodes: {{ shape: 'dot', font: {{ color: '#ffffff', size: 14 }}, borderWidth: 1 }},
+            edges: {{ color: {{ inherit: 'from', opacity: 0.5 }}, smooth: {{ type: 'continuous' }} }},
+            physics: {{ 
+                barnesHut: {{ 
+                    gravity: -6000, 
                     springLength: 150,
-                    damping: 0.1
-                }}
+                    damping: 0.1,
+                    centralGravity: 0.4
+                }} 
             }}
         }};
-
         var network = new vis.Network(container, data, options);
 
         // --- CUSTOM PHYSICS BINDING ---
@@ -303,4 +313,4 @@ def export_interactive_html(nodes_data, edges_data, output_file="minecraft_map.h
 
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(html_content)
-    print(f"✅ Interactive map exported successfully to: {output_file}")
+    print(f"✅ Interactive map with analytics exported successfully to: {output_file}")
