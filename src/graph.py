@@ -108,8 +108,9 @@ def calculate_community_data(G, use_icons=False):
     edges_data = [{"from": u, "to": v, "arrows": "to"} for u, v in G.edges()]
     return nodes_data, edges_data
 
+
 def calculate_graph_metrics(G):
-    """Calculates gameplay-focused network metrics based on the current graph."""
+    """Calculates gameplay-focused network metrics using strict structural graph rules."""
 
     # 1. Global Topology
     network_stats = [
@@ -123,16 +124,14 @@ def calculate_graph_metrics(G):
     top_utility = out_degrees[:10]
 
     # 3. Crafting Complexity (Max Crafting Depth)
-    # We use DAG Condensation to collapse infinite dye/block loops into single steps
     DAG = nx.condensation(G)
     depths = {}
-
     for scc_id in nx.topological_sort(DAG):
         preds = list(DAG.predecessors(scc_id))
         if not preds:
             depths[scc_id] = 1
         else:
-            depths[scc_id] = 1 + max(depths[p] for p in preds) # Add 1 step to the longest prerequisite
+            depths[scc_id] = 1 + max(depths[p] for p in preds)
 
     item_complexities = []
     for scc_id, data in DAG.nodes(data=True):
@@ -143,16 +142,67 @@ def calculate_graph_metrics(G):
 
     top_crafted = sorted(item_complexities, key=lambda x: x[1], reverse=True)[:10]
 
-    # 4. Self-Sustenance (Material Ecosystem Reach)
-    # Calculates exactly how many unique items exist in the downstream tree of a base material
-    base_materials = ['oak_log', 'iron_ingot', 'copper_ingot', 'redstone', 'cobblestone', 'netherite_ingot', 'diamond', 'gold_ingot']
-    reach_data = []
-    for mat in base_materials:
-        if mat in G:
-            desc_count = len(nx.descendants(G, mat))
-            reach_data.append((mat.replace('_', ' ').title(), desc_count))
+    # 4. Strict Ecosystem Subsumption Model
+    all_reach = []
+    for node in G.nodes():
+        if not node.startswith('#'):
+            descendants = nx.descendants(G, node)
+            if len(descendants) > 0:
+                all_reach.append((node, descendants))
 
-    self_sustaining = sorted(reach_data, key=lambda x: x[1], reverse=True)
+    all_reach.sort(key=lambda x: len(x[1]), reverse=True)
+
+    seen_groups = []  # list of [node_names, union_desc_set]
+
+    for node, desc_set in all_reach:
+        is_fused = False
+
+        for group in seen_groups:
+            group_nodes, group_desc_set = group
+
+            intersection = len(desc_set.intersection(group_desc_set))
+            union_size = len(desc_set.union(group_desc_set))
+
+            # RULE A (Hierarchical Subsumption):
+            # If >= 85% of this item's tree is already inside the group's tree, it is a sub-component.
+            # (e.g., Oak Planks, Bamboo, and Wood Slabs are all subsets of the overarching Wood tree).
+            subset_ratio = intersection / len(desc_set) if len(desc_set) > 0 else 0
+
+            # RULE B (Sibling Equivalence):
+            # If they share >= 65% of their total combined tree (e.g., Oak Log vs Birch Log).
+            jaccard = intersection / union_size if union_size > 0 else 0
+
+            if subset_ratio > 0.85 or jaccard > 0.65:
+                group_nodes.append(node)
+                group[1] = group_desc_set.union(desc_set)
+                is_fused = True
+                break
+
+        if not is_fused:
+            seen_groups.append([[node], set(desc_set)])
+
+    # Format output & apply deterministic naming hierarchy
+    self_sustaining = []
+    for group_nodes, union_desc_set in seen_groups[:10]:
+
+        def name_score(name):
+            in_deg = G.in_degree(name)
+            out_deg = G.out_degree(name)
+
+            penalty = 1 if ('stripped' in name or 'waxed' in name) else 0
+
+            return (in_deg, penalty, -out_deg, len(name), name)
+
+        group_nodes.sort(key=name_score)
+        primary_name = group_nodes[0].replace('_', ' ').title()
+
+        # Explicitly label it as a "Family" since it represents the combined tree
+        if len(group_nodes) > 1:
+            label = f"{primary_name} Family"
+        else:
+            label = primary_name
+
+        self_sustaining.append((label, len(union_desc_set)))
 
     return {
         "network_stats": network_stats,

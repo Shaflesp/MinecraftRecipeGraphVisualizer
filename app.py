@@ -42,6 +42,36 @@ def serve_icons(filename):
     """Serves the extracted Minecraft textures to the frontend."""
     return send_from_directory('icons', filename)
 
+
+@app.route('/compare')
+def compare():
+    """Serves the comparative analytics dashboard."""
+    return render_template('compare.html')
+
+
+@app.route('/api/compare_data')
+def api_compare_data():
+    """Fetches the metrics for all versions chronologically."""
+    if not os.path.exists(DB_PATH):
+        return jsonify([])
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT version_name, metrics_json FROM versions ORDER BY id ASC")
+    rows = c.fetchall()
+    conn.close()
+
+    historical_data = []
+    for row in rows:
+        version_name, metrics_raw = row
+        metrics = json.loads(metrics_raw) if metrics_raw else {}
+        historical_data.append({
+            "version": version_name,
+            "metrics": metrics
+        })
+
+    return jsonify(historical_data)
+
 if __name__ == '__main__':
     print("Starting Minecraft Ecosystem Server...")
     print("Open http://127.0.0.1:5000 in your browser")
