@@ -75,7 +75,7 @@ def export_interactive_html(nodes_data, edges_data, metrics_data=None, output_fi
         .floating-btn.visible {{ opacity: 1; visibility: visible; z-index: 15; }}
 
         #open-btn-left {{ left: 20px; }}
-        #open-btn-right {{ right: 20px; opacity: 1; visibility: visible; z-index: 15; }}
+        #open-btn-right {{ right: 20px; }}
 
         .panel-header {{
             display: flex; justify-content: space-between; align-items: center;

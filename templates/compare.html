@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Version History | Minecraft Ecosystem</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style type="text/css">
+        :root {
+            --bg-main: #121212;
+            --bg-card: #252525;
+            --accent: #007acc;
+            --accent-alt: #ff5722;
+            --text-main: #e0e0e0;
+            --border-color: #333333;
+        }
+
+        body {
+            margin: 0; padding: 20px 40px;
+            background-color: var(--bg-main); color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow-y: auto;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 30px;
+        }
+
+        header h1 { margin: 0; color: white; }
+
+        .btn {
+            background-color: var(--bg-card); color: var(--text-main);
+            border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 20px;
+            cursor: pointer; text-decoration: none; font-weight: bold; transition: all 0.2s ease;
+        }
+        .btn:hover { background-color: #3a3a3a; color: white; border-color: var(--accent); }
+
+        .dashboard-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background-color: var(--bg-card); border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        .chart-card h2 { margin-top: 0; margin-bottom: 15px; color: var(--accent); font-size: 1.1rem; }
+
+        .chart-container { position: relative; height: 350px; width: 100%; }
+
+        .full-width { grid-column: span 2; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Historical Crafting Evolution</h1>
+        <a href="/" class="btn">◄ Back to Interactive Map</a>
+    </header>
+
+    <div class="dashboard-grid">
+        <!-- Chart 1: Items vs Recipes Growth -->
+        <div class="chart-card">
+            <h2>Item & Recipe Growth Over Time</h2>
+            <div class="chart-container">
+                <canvas id="growthChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Chart 2: Network Density -->
+        <div class="chart-card">
+            <h2>Crafting Network Density</h2>
+            <div class="chart-container">
+                <canvas id="densityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Chart 3: Ecosystem Sizes (Top 5) -->
+        <div class="chart-card full-width">
+            <h2>Largest Self-Sustaining Ecosystems (Current Latest Version)</h2>
+            <div class="chart-container">
+                <canvas id="ecosystemChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        Chart.defaults.color = '#aaaaaa';
+        Chart.defaults.borderColor = '#333333';
+
+        async function loadDashboard() {
+            const res = await fetch('/api/compare_data');
+            const data = await res.json();
+
+            if (data.length === 0) {
+                alert("No version data found in the database!");
+                return;
+            }
+
+            const labels = data.map(d => d.version);
+
+            // 1. Prepare Growth Data
+            const itemsData = data.map(d => {
+                const stat = d.metrics.network_stats.find(s => s[0].includes("Nodes"));
+                return stat ? stat[1] : 0;
+            });
+            const recipesData = data.map(d => {
+                const stat = d.metrics.network_stats.find(s => s[0].includes("Edges"));
+                return stat ? stat[1] : 0;
+            });
+
+            new Chart(document.getElementById('growthChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Total Items', data: itemsData, borderColor: '#007acc', backgroundColor: 'rgba(0, 122, 204, 0.2)', fill: true, tension: 0.3 },
+                        { label: 'Total Recipes', data: recipesData, borderColor: '#ff5722', backgroundColor: 'rgba(255, 87, 34, 0.2)', fill: true, tension: 0.3 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+            });
+
+            // 2. Prepare Density Data
+            const densityData = data.map(d => {
+                const stat = d.metrics.network_stats.find(s => s[0].includes("Density"));
+                return stat ? parseFloat(stat[1]) : 0;
+            });
+
+            new Chart(document.getElementById('densityChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{ label: 'Network Interconnectivity Density', data: densityData, backgroundColor: '#4caf50', borderRadius: 4 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 3. Prepare Ecosystem Data (Taking the latest version in the database)
+            const latestMetrics = data[data.length - 1].metrics;
+            const topClusters = latestMetrics.self_sustaining.slice(0, 10);
+
+            new Chart(document.getElementById('ecosystemChart'), {
+                type: 'bar',
+                data: {
+                    labels: topClusters.map(c => c[0]),
+                    datasets: [{ label: `Total Items in Ecosystem (Version: ${labels[labels.length - 1]})`, data: topClusters.map(c => c[1]), backgroundColor: '#9c27b0', borderRadius: 4 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>
