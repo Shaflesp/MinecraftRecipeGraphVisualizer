@@ -1,8 +1,9 @@
-import json
 import os
+import json
 import zipfile
 import io
 from PIL import Image
+
 
 def extract_item(ingredient):
     """Parses ingredient objects across different Minecraft version formats."""
@@ -30,9 +31,6 @@ def extract_item(ingredient):
 def parse_recipes_from_jar(jar_path):
     """Reads crafting recipes directly from the .jar archive in memory."""
     edges = []
-    import json
-    import zipfile
-
     with zipfile.ZipFile(jar_path, 'r') as jar:
         for file in jar.namelist():
             # Mojang renamed 'recipes/' to 'recipe/' in 1.21. We check for both!
@@ -89,7 +87,6 @@ def parse_tags_from_jar(jar_path):
             if (file.startswith('data/minecraft/tags/items/') or
                 file.startswith('data/minecraft/tags/item/')) and file.endswith('.json'):
 
-                # Dynamically construct the tag name (e.g., #minecraft:logs)
                 parts = file.split('/')
                 try:
                     idx = parts.index('item')
@@ -125,9 +122,8 @@ def extract_textures_from_jar(jar_path, output_dir="icons"):
                     file.startswith('assets/minecraft/textures/block/'):
                 if file.endswith('.png'):
 
-                    img_data = jar.read(file)
-
                     try:
+                        img_data = jar.read(file)
                         with Image.open(io.BytesIO(img_data)) as img:
                             width, height = img.size
 
@@ -139,7 +135,7 @@ def extract_textures_from_jar(jar_path, output_dir="icons"):
 
                             img.save(out_path)
                             extracted_count += 1
-                    except Exception as e:
+                    except Exception:
                         pass
 
     print(f"Extracted and processed {extracted_count} textures to /{output_dir}/")

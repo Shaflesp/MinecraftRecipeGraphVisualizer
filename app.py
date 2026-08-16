@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, send_from_directory
 import sqlite3
 import os
 import json
@@ -36,6 +36,11 @@ def api_graph(version):
     if not nodes:
         return jsonify({"error": "Version not found"}), 404
     return jsonify({"nodes": nodes, "edges": edges, "metrics": metrics})
+
+@app.route('/icons/<path:filename>')
+def serve_icons(filename):
+    """Serves the extracted Minecraft textures to the frontend."""
+    return send_from_directory('icons', filename)
 
 if __name__ == '__main__':
     print("Starting Minecraft Ecosystem Server...")
