@@ -3,25 +3,40 @@ import json
 import csv
 from PIL import Image
 
-# --- THE FLATTENING DICTIONARY ---
 FLATTENING_MAP = {}
 script_dir = os.path.dirname(os.path.abspath(__file__))
-csv_path = os.path.join(script_dir, '..', 'translations.csv')
+csv_path = os.path.normpath(os.path.join(script_dir, '..', 'translations.csv'))
 
 if os.path.exists(csv_path):
-    with open(csv_path, mode='r', encoding='utf-8') as f:
-        reader = csv.reader(f)
-        next(reader, None)  # Skip the header row
-        for row in reader:
-            if len(row) == 2:
-                FLATTENING_MAP[row[0].strip()] = row[1].strip()
+    try:
+        with open(csv_path, mode='r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            next(reader, None)
+            for row in reader:
+                if len(row) >= 2:
+                    FLATTENING_MAP[row[0].strip()] = row[1].strip()
+    except Exception as e:
+        print(f"[!] Warning: Could not read translations.csv: {e}")
 
 
 def translate_legacy_item(item_name, data_val):
-    if not item_name: return None
-    if not item_name.startswith('minecraft:'): item_name = f"minecraft:{item_name}"
-    legacy_key = f"{item_name}:{data_val}"
-    if legacy_key in FLATTENING_MAP: return FLATTENING_MAP[legacy_key].replace('minecraft:', '')
+    if not item_name:
+        return None
+    if not item_name.startswith('minecraft:'):
+        item_name = f"minecraft:{item_name}"
+
+    # 1. Try exact metadata match (e.g., "minecraft:log:0" -> "oak_log")
+    if data_val is not None and data_val != 32767:
+        exact_key = f"{item_name}:{data_val}"
+        if exact_key in FLATTENING_MAP:
+            return FLATTENING_MAP[exact_key].replace('minecraft:', '')
+
+    # 2. Try wildcard match from translations.csv (e.g., "minecraft:log:*" -> "#logs")
+    wildcard_key = f"{item_name}:*"
+    if wildcard_key in FLATTENING_MAP:
+        return FLATTENING_MAP[wildcard_key].replace('minecraft:', '')
+
+    # 3. Fallback for standard items with no special metadata rules (e.g., "minecraft:iron_ingot")
     return item_name.replace('minecraft:', '')
 
 
@@ -87,7 +102,6 @@ def process_recipe_json(data, edges):
 
 
 def parse_recipes_from_dump(dump_dir):
-    """Crawls a local dump directory for JSON recipes."""
     edges = []
     for root, dirs, files in os.walk(dump_dir):
         if 'recipes' in root or 'recipe' in root:
@@ -103,7 +117,6 @@ def parse_recipes_from_dump(dump_dir):
 
 
 def parse_tags_from_dump(dump_dir):
-    """Crawls a local dump directory for JSON tags."""
     tag_edges = []
     for root, dirs, files in os.walk(dump_dir):
         if 'tags' in root and ('items' in root or 'item' in root):
@@ -119,7 +132,12 @@ def parse_tags_from_dump(dump_dir):
                             continue
 
                     rel_path = '/'.join(parts[idx + 1:])
-                    tag_name = f"#{rel_path}/{file}".replace('.json', '').replace('//', '/')
+
+                    # BUGFIX: Prevent the extra slash from breaking tag strings!
+                    if rel_path:
+                        tag_name = f"#{rel_path}/{file}".replace('.json', '')
+                    else:
+                        tag_name = f"#{file}".replace('.json', '')
 
                     try:
                         with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
@@ -135,10 +153,8 @@ def parse_tags_from_dump(dump_dir):
 
 
 def process_textures_from_dump(dump_dir, output_dir="icons"):
-    """Crawls the dump directory for textures, crops animated sprites, and copies them to /icons/."""
     os.makedirs(output_dir, exist_ok=True)
     extracted_count = 0
-
     for root, dirs, files in os.walk(dump_dir):
         norm_root = root.replace('\\', '/')
         if 'textures/item' in norm_root or 'textures/block' in norm_root:
@@ -146,20 +162,14 @@ def process_textures_from_dump(dump_dir, output_dir="icons"):
                 if file.endswith('.png'):
                     try:
                         img_path = os.path.join(root, file)
-
-                        # Strip away everything before 'textures'
                         parts = norm_root.split('/')
                         idx = parts.index('textures')
-                        rel_dir = '/'.join(parts[idx + 1:])  # Will yield 'item' or 'block'
-
+                        rel_dir = '/'.join(parts[idx + 1:])
                         out_path = os.path.join(output_dir, rel_dir, file)
                         os.makedirs(os.path.dirname(out_path), exist_ok=True)
-
-                        # Open, check for animation (height > width), crop, and save
                         with Image.open(img_path) as img:
                             width, height = img.size
-                            if height > width:
-                                img = img.crop((0, 0, width, width))
+                            if height > width: img = img.crop((0, 0, width, width))
                             img.save(out_path)
                         extracted_count += 1
                     except Exception:

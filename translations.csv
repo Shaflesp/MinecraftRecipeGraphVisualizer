@@ -1,4 +1,10 @@
 legacy_key,modern_id
+minecraft:log:*,#logs
+minecraft:log2:*,#logs
+minecraft:planks:*,#planks
+minecraft:dye:*,#dyes
+minecraft:wool:*,#wool
+minecraft:stone:*,#stone
 minecraft:log:0,oak_log
 minecraft:log:1,spruce_log
 minecraft:log:2,birch_log
