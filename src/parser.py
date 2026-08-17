@@ -157,6 +157,8 @@ def process_textures_from_dump(dump_dir, output_dir="icons"):
     extracted_count = 0
     for root, dirs, files in os.walk(dump_dir):
         norm_root = root.replace('\\', '/')
+
+        # 'textures/item' matches 'textures/items' automatically via substring
         if 'textures/item' in norm_root or 'textures/block' in norm_root:
             for file in files:
                 if file.endswith('.png'):
@@ -164,9 +166,17 @@ def process_textures_from_dump(dump_dir, output_dir="icons"):
                         img_path = os.path.join(root, file)
                         parts = norm_root.split('/')
                         idx = parts.index('textures')
-                        rel_dir = '/'.join(parts[idx + 1:])
+                        rel_dir = '/'.join(parts[idx+1:])
+
+                        # --- Normalize old paths to modern format ---
+                        if rel_dir.startswith('items'):
+                            rel_dir = rel_dir.replace('items', 'item', 1)
+                        elif rel_dir.startswith('blocks'):
+                            rel_dir = rel_dir.replace('blocks', 'block', 1)
+
                         out_path = os.path.join(output_dir, rel_dir, file)
                         os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
                         with Image.open(img_path) as img:
                             width, height = img.size
                             if height > width: img = img.crop((0, 0, width, width))

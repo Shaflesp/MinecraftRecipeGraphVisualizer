@@ -37,10 +37,10 @@ def api_graph(version):
         return jsonify({"error": "Version not found"}), 404
     return jsonify({"nodes": nodes, "edges": edges, "metrics": metrics})
 
-@app.route('/icons/<path:filename>')
-def serve_icons(filename):
-    """Serves the extracted Minecraft textures to the frontend."""
-    return send_from_directory('icons', filename)
+@app.route('/icons/<version>/<path:filename>')
+def serve_icons(version, filename):
+    """Serves the version-specific extracted Minecraft textures to the frontend."""
+    return send_from_directory(f'icons/{version}', filename)
 
 
 @app.route('/compare')

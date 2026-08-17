@@ -210,7 +210,7 @@
         var options = {
             nodes: { shape: 'dot', font: { color: '#ffffff', size: 14 }, borderWidth: 1 },
             edges: { color: { inherit: 'from', opacity: 0.5 }, smooth: { type: 'continuous' } },
-            physics: { barnesHut: { gravity: -6000, springLength: 150, damping: 0.1, centralGravity: 0.4 } }
+            physics: { barnesHut: { gravitationalConstant: -2000, springLength: 150, damping: 0.1, centralGravity: 0.4 } }
         };
         var network = new vis.Network(container, data, options);
 

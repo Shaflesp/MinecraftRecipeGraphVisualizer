@@ -18,11 +18,13 @@ def extract_jar(version, jar_path):
     target_prefixes = [
         'data/minecraft/recipes/',
         'data/minecraft/recipe/',
-        'assets/minecraft/recipes/',  # Crucial for catching 1.12's weird recipe location
+        'assets/minecraft/recipes/',
         'data/minecraft/tags/items/',
         'data/minecraft/tags/item/',
         'assets/minecraft/textures/item/',
-        'assets/minecraft/textures/block/'
+        'assets/minecraft/textures/block/',
+        'assets/minecraft/textures/items/',
+        'assets/minecraft/textures/blocks/'
     ]
 
     extracted_count = 0

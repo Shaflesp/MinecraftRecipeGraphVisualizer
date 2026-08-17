@@ -14,7 +14,8 @@ def run_parser(version, dump_dir, db_path):
         return False
 
     print(f"Analyzing {version} from {dump_dir}...")
-    use_icons = process_textures_from_dump(dump_dir)
+    icons_dir = f"icons/{version}"
+    use_icons = process_textures_from_dump(dump_dir, output_dir=icons_dir)
 
     print("Parsing recipes and tags...")
     recipe_edges = parse_recipes_from_dump(dump_dir)
@@ -27,7 +28,7 @@ def run_parser(version, dump_dir, db_path):
         print("[!] Error: Graph contains no nodes. Aborting.")
         return False
 
-    nodes_data, edges_data = calculate_community_data(G, use_icons=use_icons)
+    nodes_data, edges_data = calculate_community_data(G, use_icons=use_icons, version=version)
     metrics_data = calculate_graph_metrics(G)
 
     print("Saving to SQLite...")

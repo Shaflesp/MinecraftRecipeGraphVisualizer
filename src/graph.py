@@ -1,6 +1,23 @@
 import networkx as nx
 import os
+import csv
 
+TEXTURE_ALIASES = {}
+script_dir = os.path.dirname(os.path.abspath(__file__))
+csv_path = os.path.normpath(os.path.join(script_dir, '..', 'texture_aliases.csv'))
+
+if os.path.exists(csv_path):
+    try:
+        with open(csv_path, mode='r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            next(reader, None)
+            for row in reader:
+                if len(row) >= 2:
+                    modern, legacy = row[0].strip(), row[1].strip()
+                    if modern not in TEXTURE_ALIASES: TEXTURE_ALIASES[modern] = []
+                    TEXTURE_ALIASES[modern].append(legacy)
+    except Exception as e:
+        print(f"[!] Warning: Could not read texture_aliases.csv: {e}")
 
 def build_graph(recipe_edges, tag_edges):
     """Builds a Directed Graph from parsed edges."""
@@ -12,66 +29,45 @@ def build_graph(recipe_edges, tag_edges):
 
 def get_icon_path(node_id, icons_dir="icons"):
     """Locates the extracted image for a given block or item with intelligent fallbacks."""
-    search_id = node_id
-
-    # 1. Hardcoded explicit aliases
-    aliases = {
-        "mangrove_roots": "mangrove_roots_top",
-        "muddy_mangrove_roots": "muddy_mangrove_roots_top",
-        "crimson_hyphae": "crimson_stem",
-        "warped_hyphae": "warped_stem",
-        "stripped_crimson_hyphae": "stripped_crimson_stem",
-        "stripped_warped_hyphae": "stripped_warped_stem",
-        "snow_block": "snow"
-    }
-
-    if search_id in aliases:
-        search_id = aliases[search_id]
 
     def check(name):
-        ipath = f"{icons_dir}/item/{name}.png"
-        bpath = f"{icons_dir}/block/{name}.png"
-        if os.path.exists(ipath): return ipath
-        if os.path.exists(bpath): return bpath
+        local_ipath = f"{icons_dir}/item/{name}.png"
+        local_bpath = f"{icons_dir}/block/{name}.png"
+        if os.path.exists(local_ipath): return f"/{local_ipath}"
+        if os.path.exists(local_bpath): return f"/{local_bpath}"
         return None
 
-    # 2. Try the exact match first
-    found = check(search_id)
-    if found: return found
+    # 1. Build a list of names to check: The modern name + ANY historical aliases
+    names_to_try = [node_id] + TEXTURE_ALIASES.get(node_id, [])
 
-    # 3. Smart Heuristic A: Try common block faces
-    # This automatically fixes Pumpkins, Targets, Hay Blocks, Azaleas, Crafting Tables, etc.
+    # 2. Try exact matches first (loops through modern name, then all aliases)
+    for search_name in names_to_try:
+        found = check(search_name)
+        if found: return found
+
+    # 3. Smart Heuristics (We apply these to the base node_id)
     for suffix in ['_side', '_top', '_front']:
-        found = check(search_id + suffix)
+        found = check(node_id + suffix)
         if found: return found
 
-    # 4. Smart Heuristic B: Wood conversions
-    if search_id.endswith('_wood'):
-        found = check(search_id.replace('_wood', '_log'))
+    if node_id.endswith('_wood'):
+        found = check(node_id.replace('_wood', '_log'))
         if found: return found
 
-    # 5. Smart Heuristic C: Architectural derivations (Walls, Fences, Slabs, Stairs)
-    # This strips the architectural suffix and hunts for the base material texture
     for suffix in ['_wall', '_fence', '_fence_gate', '_slab', '_stairs']:
-        if search_id.endswith(suffix):
-            base = search_id.replace(suffix, '')
-
-            # Try direct base (e.g., cobblestone_wall -> cobblestone.png)
+        if node_id.endswith(suffix):
+            base = node_id.replace(suffix, '')
             found = check(base)
             if found: return found
-
-            # Try plural base (e.g., stone_brick_stairs -> stone_bricks.png)
             found = check(base + 's')
             if found: return found
-
-            # Try planks (e.g., oak_fence -> oak_planks.png)
             found = check(base + '_planks')
             if found: return found
 
     return None
 
 
-def calculate_community_data(G, use_icons=False):
+def calculate_community_data(G, use_icons=False, version="default"):
     """Computes Louvain Modularity and applies icons if enabled."""
     undirected_G = G.to_undirected()
     communities = list(nx.community.louvain_communities(undirected_G))
@@ -98,7 +94,7 @@ def calculate_community_data(G, use_icons=False):
 
         # Apply Minecraft icons if available
         if use_icons and not node.startswith('#'):
-            icon = get_icon_path(node)
+            icon = get_icon_path(node, icons_dir=f"icons/{version}")
             if icon:
                 node_dict["shape"] = "image"
                 node_dict["image"] = icon
