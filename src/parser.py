@@ -1,14 +1,32 @@
 import os
 import json
-import zipfile
-import io
+import csv
 from PIL import Image
+
+# --- THE FLATTENING DICTIONARY ---
+FLATTENING_MAP = {}
+script_dir = os.path.dirname(os.path.abspath(__file__))
+csv_path = os.path.join(script_dir, '..', 'translations.csv')
+
+if os.path.exists(csv_path):
+    with open(csv_path, mode='r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        next(reader, None)  # Skip the header row
+        for row in reader:
+            if len(row) == 2:
+                FLATTENING_MAP[row[0].strip()] = row[1].strip()
+
+
+def translate_legacy_item(item_name, data_val):
+    if not item_name: return None
+    if not item_name.startswith('minecraft:'): item_name = f"minecraft:{item_name}"
+    legacy_key = f"{item_name}:{data_val}"
+    if legacy_key in FLATTENING_MAP: return FLATTENING_MAP[legacy_key].replace('minecraft:', '')
+    return item_name.replace('minecraft:', '')
 
 
 def extract_item(ingredient):
-    """Parses ingredient objects across different Minecraft version formats."""
-    if isinstance(ingredient, str):
-        return ingredient.replace('minecraft:', '')
+    if isinstance(ingredient, str): return ingredient.replace('minecraft:', '')
     if isinstance(ingredient, list):
         items = []
         for i in ingredient:
@@ -19,6 +37,9 @@ def extract_item(ingredient):
                 items.append(extracted)
         return items
     if isinstance(ingredient, dict):
+        if 'data' in ingredient and ('item' in ingredient or 'id' in ingredient):
+            item_name = ingredient.get('item', ingredient.get('id', ''))
+            return translate_legacy_item(item_name, ingredient['data'])
         if 'item' in ingredient:
             return ingredient['item'].replace('minecraft:', '')
         elif 'tag' in ingredient:
@@ -28,115 +49,119 @@ def extract_item(ingredient):
     return None
 
 
-def parse_recipes_from_jar(jar_path):
-    """Reads crafting recipes directly from the .jar archive in memory."""
+def process_recipe_json(data, edges):
+    recipe_type = data.get('type', '')
+    if recipe_type not in ['minecraft:crafting_shaped', 'minecraft:crafting_shapeless', 'crafting_shaped',
+                           'crafting_shapeless']:
+        return
+
+    result = data.get('result', {})
+    if isinstance(result, str):
+        result_item = result.replace('minecraft:', '')
+    else:
+        r_item = result.get('item', result.get('id', ''))
+        r_data = result.get('data', 0)
+        result_item = translate_legacy_item(r_item, r_data)
+
+    if not result_item: return
+
+    ingredients_list = []
+    if 'shaped' in recipe_type:
+        for key, ingredient in data.get('key', {}).items():
+            extracted = extract_item(ingredient)
+            if isinstance(extracted, list):
+                ingredients_list.extend(extracted)
+            elif extracted:
+                ingredients_list.append(extracted)
+
+    elif 'shapeless' in recipe_type:
+        for ingredient in data.get('ingredients', []):
+            extracted = extract_item(ingredient)
+            if isinstance(extracted, list):
+                ingredients_list.extend(extracted)
+            elif extracted:
+                ingredients_list.append(extracted)
+
+    for ing in set(ingredients_list):
+        if ing: edges.append((ing, result_item))
+
+
+def parse_recipes_from_dump(dump_dir):
+    """Crawls a local dump directory for JSON recipes."""
     edges = []
-    with zipfile.ZipFile(jar_path, 'r') as jar:
-        for file in jar.namelist():
-            # Mojang renamed 'recipes/' to 'recipe/' in 1.21. We check for both!
-            if (file.startswith('data/minecraft/recipes/') or
-                file.startswith('data/minecraft/recipe/')) and file.endswith('.json'):
-
-                try:
-                    data = json.loads(jar.read(file).decode('utf-8'))
-
-                    recipe_type = data.get('type', '')
-                    if recipe_type not in ['minecraft:crafting_shaped', 'minecraft:crafting_shapeless']:
-                        continue
-
-                    result = data.get('result', {})
-                    if isinstance(result, str):
-                        result_item = result.replace('minecraft:', '')
-                    else:
-                        result_item = result.get('item', result.get('id', '')).replace('minecraft:', '')
-
-                    if not result_item:
-                        continue
-
-                    ingredients_list = []
-                    if recipe_type == 'minecraft:crafting_shaped':
-                        for key, ingredient in data.get('key', {}).items():
-                            extracted = extract_item(ingredient)
-                            if isinstance(extracted, list):
-                                ingredients_list.extend(extracted)
-                            elif extracted:
-                                ingredients_list.append(extracted)
-
-                    elif recipe_type == 'minecraft:crafting_shapeless':
-                        for ingredient in data.get('ingredients', []):
-                            extracted = extract_item(ingredient)
-                            if isinstance(extracted, list):
-                                ingredients_list.extend(extracted)
-                            elif extracted:
-                                ingredients_list.append(extracted)
-
-                    for ing in set(ingredients_list):
-                        if ing:
-                            edges.append((ing, result_item))
-                except Exception:
-                    pass
+    for root, dirs, files in os.walk(dump_dir):
+        if 'recipes' in root or 'recipe' in root:
+            for file in files:
+                if file.endswith('.json'):
+                    try:
+                        with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            process_recipe_json(data, edges)
+                    except Exception:
+                        pass
     return edges
 
 
-def parse_tags_from_jar(jar_path):
-    """Reads item tags directly from the .jar archive in memory."""
+def parse_tags_from_dump(dump_dir):
+    """Crawls a local dump directory for JSON tags."""
     tag_edges = []
-    with zipfile.ZipFile(jar_path, 'r') as jar:
-        for file in jar.namelist():
-            # Target both 'item' and 'items' tags to cover version differences
-            if (file.startswith('data/minecraft/tags/items/') or
-                file.startswith('data/minecraft/tags/item/')) and file.endswith('.json'):
+    for root, dirs, files in os.walk(dump_dir):
+        if 'tags' in root and ('items' in root or 'item' in root):
+            for file in files:
+                if file.endswith('.json'):
+                    parts = root.replace('\\', '/').split('/')
+                    try:
+                        idx = parts.index('item')
+                    except ValueError:
+                        try:
+                            idx = parts.index('items')
+                        except ValueError:
+                            continue
 
-                parts = file.split('/')
-                try:
-                    idx = parts.index('item')
-                except ValueError:
-                    idx = parts.index('items')
+                    rel_path = '/'.join(parts[idx + 1:])
+                    tag_name = f"#{rel_path}/{file}".replace('.json', '').replace('//', '/')
 
-                rel_path = '/'.join(parts[idx + 1:])
-                tag_name = '#' + rel_path.replace('.json', '')
-
-                try:
-                    data = json.loads(jar.read(file).decode('utf-8'))
-                    for value in data.get('values', []):
-                        if isinstance(value, str):
-                            child = value.replace('minecraft:', '')
-                            tag_edges.append((child, tag_name))
-                        elif isinstance(value, dict) and 'id' in value:
-                            child = value['id'].replace('minecraft:', '')
-                            tag_edges.append((child, tag_name))
-                except Exception:
-                    pass
+                    try:
+                        with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            for value in data.get('values', []):
+                                if isinstance(value, str):
+                                    tag_edges.append((value.replace('minecraft:', ''), tag_name))
+                                elif isinstance(value, dict) and 'id' in value:
+                                    tag_edges.append((value['id'].replace('minecraft:', ''), tag_name))
+                    except Exception:
+                        pass
     return tag_edges
 
 
-def extract_textures_from_jar(jar_path, output_dir="icons"):
-    """Extracts textures to a local folder and crops animated sprite sheets."""
-    print(f"Extracting textures from {os.path.basename(jar_path)}...")
+def process_textures_from_dump(dump_dir, output_dir="icons"):
+    """Crawls the dump directory for textures, crops animated sprites, and copies them to /icons/."""
     os.makedirs(output_dir, exist_ok=True)
-
     extracted_count = 0
-    with zipfile.ZipFile(jar_path, 'r') as jar:
-        for file in jar.namelist():
-            if file.startswith('assets/minecraft/textures/item/') or \
-                    file.startswith('assets/minecraft/textures/block/'):
+
+    for root, dirs, files in os.walk(dump_dir):
+        norm_root = root.replace('\\', '/')
+        if 'textures/item' in norm_root or 'textures/block' in norm_root:
+            for file in files:
                 if file.endswith('.png'):
-
                     try:
-                        img_data = jar.read(file)
-                        with Image.open(io.BytesIO(img_data)) as img:
-                            width, height = img.size
+                        img_path = os.path.join(root, file)
 
+                        # Strip away everything before 'textures'
+                        parts = norm_root.split('/')
+                        idx = parts.index('textures')
+                        rel_dir = '/'.join(parts[idx + 1:])  # Will yield 'item' or 'block'
+
+                        out_path = os.path.join(output_dir, rel_dir, file)
+                        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+                        # Open, check for animation (height > width), crop, and save
+                        with Image.open(img_path) as img:
+                            width, height = img.size
                             if height > width:
                                 img = img.crop((0, 0, width, width))
-
-                            out_path = os.path.join(output_dir, file.replace('assets/minecraft/textures/', ''))
-                            os.makedirs(os.path.dirname(out_path), exist_ok=True)
-
                             img.save(out_path)
-                            extracted_count += 1
+                        extracted_count += 1
                     except Exception:
                         pass
-
-    print(f"Extracted and processed {extracted_count} textures to /{output_dir}/")
     return True

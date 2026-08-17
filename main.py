@@ -1,23 +1,26 @@
 import argparse
 import os
-from src.parser import parse_recipes_from_jar, parse_tags_from_jar, extract_textures_from_jar
+from src.parser import parse_recipes_from_dump, parse_tags_from_dump, process_textures_from_dump
 from src.graph import build_graph, calculate_community_data, calculate_graph_metrics
 from src.exporter import export_interactive_html
 from src.database import save_version_data, load_version_data
 
 
 def run_parser(args):
-    """Phase 1: Crunch the data and save to SQLite."""
-    if not os.path.exists(args.jar):
-        print(f"Error: JAR file not found at {args.jar}")
+    """Phase 1: Crunch the data from a dump folder and save to SQLite."""
+
+    dump_dir = args.dump_dir
+
+    if not os.path.exists(dump_dir):
+        print(f"Error: Dump directory not found at {dump_dir}")
         return
 
-    print(f"Analyzing {args.version} from {os.path.basename(args.jar)}...")
-    use_icons = extract_textures_from_jar(args.jar)
+    print(f"Analyzing {args.version} from {dump_dir}...")
+    use_icons = process_textures_from_dump(dump_dir)
 
     print("Parsing recipes and tags...")
-    recipe_edges = parse_recipes_from_jar(args.jar)
-    tag_edges = parse_tags_from_jar(args.jar)
+    recipe_edges = parse_recipes_from_dump(dump_dir)
+    tag_edges = parse_tags_from_dump(dump_dir)
 
     print("Building Graph & computing math...")
     G = build_graph(recipe_edges, tag_edges)
@@ -55,9 +58,9 @@ def main():
     subparsers = parser.add_subparsers(dest='command', required=True)
 
     # The 'parse' command
-    parse_cmd = subparsers.add_parser('parse', help='Parse a JAR and save its graph to SQLite')
+    parse_cmd = subparsers.add_parser('parse', help='Parse a dump folder and save its graph to SQLite')
     parse_cmd.add_argument('version', type=str, help='Name of the version (e.g., "1.20.4")')
-    parse_cmd.add_argument('jar', type=str, help='Path to the Minecraft .jar')
+    parse_cmd.add_argument('dump_dir', type=str, help='Path to the Minecraft dump folder')
 
     # The 'render' command
     render_cmd = subparsers.add_parser('render', help='Render an interactive HTML map from SQLite data')
